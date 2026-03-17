@@ -1,5 +1,7 @@
 # GSC Bulk URL Removal Helper
 
+[GitHub](https://github.com/abhishekmardiya/gsc-bulk-url-removal-helper)
+
 Generate automation scripts for bulk URL removals in Google Search Console.
 
 ## Usage
