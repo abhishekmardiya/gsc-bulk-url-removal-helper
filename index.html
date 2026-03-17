@@ -22,7 +22,7 @@
     </style>
   </head>
   <body class="bg-slate-50 min-h-screen py-12 px-4 font-sans text-slate-900">
-    <div class="max-w-4xl mx-auto">
+    <div class="max-w-7xl mx-auto">
       <!-- Header -->
       <div class="text-center mb-10">
         <h1 class="text-3xl font-bold text-slate-800 mb-2">
@@ -113,7 +113,7 @@
           <div
             class="glass p-6 rounded-2xl shadow-sm border-l-4 border-l-blue-500"
           >
-            <h2 class="font-bold text-lg mb-3">Quick Instructions</h2>
+            <h2 class="font-bold text-lg mb-3">How to use</h2>
             <ol class="text-sm space-y-3 text-slate-600 list-decimal ml-4">
               <li>Navigate to <b>Google Search Console</b>.</li>
               <li>Select your property and go to <b>Removals</b>.</li>
@@ -140,14 +140,27 @@
               >
               <button
                 onclick="copyScript()"
-                class="text-xs text-blue-600 hover:underline font-medium"
+                class="inline-flex items-center gap-1.5 text-xs font-semibold text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 py-1.5 px-3 rounded-lg transition-colors border border-blue-200"
               >
+                <svg
+                  class="w-3.5 h-3.5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
+                  />
+                </svg>
                 Copy to Clipboard
               </button>
             </div>
             <pre
               id="scriptOutput"
-              class="w-full h-64 p-3 bg-slate-900 text-green-400 text-[10px] overflow-auto rounded-lg font-mono whitespace-pre-wrap"
+              class="w-full h-64 p-3 bg-slate-900 text-green-400 text-xs overflow-auto rounded-lg font-mono whitespace-pre-wrap"
             ></pre>
           </div>
         </div>
@@ -155,6 +168,155 @@
     </div>
 
     <script>
+      function normalizeIncomingUrl(rawUrl) {
+        const trimmedUrl = rawUrl.trim();
+        let unwrappedUrl = trimmedUrl;
+        let wasWrapped = false;
+        const wrappers = ['"', "`"];
+
+        for (const wrapper of wrappers) {
+          while (
+            unwrappedUrl.length >= 2 &&
+            unwrappedUrl.startsWith(wrapper) &&
+            unwrappedUrl.endsWith(wrapper)
+          ) {
+            wasWrapped = true;
+            unwrappedUrl = unwrappedUrl.slice(1, -1).trim();
+          }
+        }
+
+        if (!wasWrapped) {
+          return trimmedUrl;
+        }
+
+        const cleanedUrl = unwrappedUrl.replace(/\s+/g, " ");
+        return encodeURI(cleanedUrl);
+      }
+
+      function splitRawUrlEntries(rawInput) {
+        const entries = [];
+        let currentEntry = "";
+        let inQuotes = false;
+        let quoteChar = "";
+
+        for (let i = 0; i < rawInput.length; i += 1) {
+          const c = rawInput[i];
+
+          if (inQuotes) {
+            if (c === quoteChar) {
+              if (quoteChar === '"' && rawInput[i + 1] === '"') {
+                currentEntry += '"';
+                i += 1;
+              } else {
+                inQuotes = false;
+              }
+            }
+            currentEntry += c;
+            continue;
+          }
+
+          if (
+            (c === '"' || c === "`") &&
+            (i === 0 || rawInput[i - 1] === "\n")
+          ) {
+            inQuotes = true;
+            quoteChar = c;
+            currentEntry += c;
+            continue;
+          }
+
+          if (c === "\r") {
+            continue;
+          }
+
+          if (c === "\n") {
+            const trimmedEntry = currentEntry.trim();
+            if (trimmedEntry.length > 0) {
+              entries.push(trimmedEntry);
+            }
+            currentEntry = "";
+            continue;
+          }
+
+          currentEntry += c;
+        }
+
+        const trailingEntry = currentEntry.trim();
+        if (trailingEntry.length > 0) {
+          entries.push(trailingEntry);
+        }
+
+        return entries;
+      }
+
+      /**
+       * Parses CSV text respecting quoted fields. Handles:
+       * - Newlines inside quoted fields (e.g. "Ready To Move" wrapping to next line)
+       * - Commas inside quoted fields
+       * - Escaped quotes ("") inside quoted fields
+       */
+      function parseCSV(text) {
+        const rows = [];
+        let currentRow = [];
+        let field = "";
+        let inQuotes = false;
+        let i = 0;
+
+        while (i < text.length) {
+          const c = text[i];
+
+          if (inQuotes) {
+            if (c === '"') {
+              if (text[i + 1] === '"') {
+                field += '"';
+                i += 1;
+              } else {
+                inQuotes = false;
+              }
+            } else {
+              field += c;
+            }
+            i += 1;
+            continue;
+          }
+
+          if (c === '"') {
+            inQuotes = true;
+            i += 1;
+            continue;
+          }
+
+          if (c === ",") {
+            currentRow.push(field.trim());
+            field = "";
+            i += 1;
+            continue;
+          }
+
+          if (c === "\n" || c === "\r") {
+            currentRow.push(field.trim());
+            field = "";
+            rows.push(currentRow);
+            currentRow = [];
+            if (c === "\r" && text[i + 1] === "\n") {
+              i += 1;
+            }
+            i += 1;
+            continue;
+          }
+
+          field += c;
+          i += 1;
+        }
+
+        if (field.length > 0 || currentRow.length > 0) {
+          currentRow.push(field.trim());
+          rows.push(currentRow);
+        }
+
+        return rows;
+      }
+
       function handleFileUpload(event) {
         const file = event.target.files?.[0];
         if (!file) return;
@@ -164,20 +326,27 @@
           const text = e.target?.result;
           if (typeof text !== "string") return;
 
-          // Parse CSV text into an array of URLs
-          const lines = text.split(/\r?\n/);
-          const urls = lines
-            .map((line) => line.split(",")[0]) // Extract the first column
-            .map((url) => url.replace(/^["']|["']$/g, "").trim()) // Clean up quotes and whitespaces
-            .filter((url) => url.length > 0 && url.startsWith("http")); // Keep only valid-looking URLs
+          // Parse CSV with proper handling of quoted fields (spaces, newlines, commas inside quotes)
+          const rows = parseCSV(text);
+          const urls = rows
+            .map((row) => (row[0] || "").trim())
+            .filter((url) => url.length > 0 && url.startsWith("http"));
+
+          const textareaValue = urls
+            .map((url) => {
+              if (url.includes("\n") || url.includes("\r")) {
+                return '"' + url.replace(/"/g, '""') + '"';
+              }
+              return url;
+            })
+            .join("\n");
 
           const textArea = document.getElementById("urlInput");
           if (textArea) {
-            // Append if there's already content, otherwise replace
             const existingContent = textArea.value.trim();
             textArea.value = existingContent
-              ? existingContent + "\n" + urls.join("\n")
-              : urls.join("\n");
+              ? existingContent + "\n" + textareaValue
+              : textareaValue;
           }
 
           // Reset input to allow uploading the same file again if needed
@@ -187,9 +356,9 @@
       }
 
       function generateScript() {
-        const urls = document
-          .getElementById("urlInput")
-          .value.split("\n")
+        const rawInput = document.getElementById("urlInput").value;
+        const urls = splitRawUrlEntries(rawInput)
+          .map((url) => normalizeIncomingUrl(url))
           .filter((u) => u.trim() !== "");
         const type = document.getElementById("removalType").value;
 
@@ -205,6 +374,7 @@
 (async () => {
     const urls = ${JSON.stringify(urls)};
     const removePrefix = ${type === "PREFIX"};
+    const failedUrls = [];
     
     console.log("%c🚀 Starting Bulk Removal of " + urls.length + " items...", "color: #3b82f6; font-weight: bold; font-size: 14px;");
 
@@ -274,7 +444,7 @@
             console.log("✅ Submitted Successfully");
 
         } catch (err) {
-            console.error(\`❌ Error at \${url}: \`, err.message);
+            failedUrls.push({ url, error: err.message });
             // Close the dialog using the 'cancel' button (data-id IbE0S from your code)
             const cancelBtn = document.querySelector('div[data-id="IbE0S"]') || findButtonByText('Cancel') || findButtonByText('cancel');
             if (cancelBtn) {
@@ -282,6 +452,11 @@
                 await wait(1000);
             }
         }
+    }
+    
+    if (failedUrls.length > 0) {
+        console.error("%c❌ URLs with errors (" + failedUrls.length + "):", "color: #ef4444; font-weight: bold; font-size: 14px;");
+        failedUrls.forEach(({ url, error }) => console.error(\`  • \${url}\n    \${error}\`));
     }
     
     console.log("%c🎉 Finished!", "color: #3b82f6; font-weight: bold; font-size: 14px;");
